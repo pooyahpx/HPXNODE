@@ -1881,7 +1881,7 @@ const file_common_service_proto_rawDesc = "" +
 	"\x18GetUserOnlineIpListStats\x12\x14.service.StatRequest\x1a\".service.StatsOnlineIpListResponse\"\x00\x12-\n" +
 	"\bSyncUser\x12\r.service.User\x1a\x0e.service.Empty\"\x00(\x01\x12-\n" +
 	"\tSyncUsers\x12\x0e.service.Users\x1a\x0e.service.Empty\"\x00\x12;\n" +
-	"\x10SyncUsersChunked\x12\x13.service.UsersChunk\x1a\x0e.service.Empty\"\x00(\x01B#Z!github.com/pooyahpx/HPXNODE/commonb\x06proto3"
+	"\x10SyncUsersChunked\x12\x13.service.UsersChunk\x1a\x0e.service.Empty\"\x00(\x01B#Z!github.com/pasarguard/node/commonb\x06proto3"
 
 var (
 	file_common_service_proto_rawDescOnce sync.Once
