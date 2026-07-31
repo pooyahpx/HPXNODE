@@ -1,13 +1,6 @@
 name: Build and push node image (GHCR)
 
-# Builds the multi-backend node image and pushes it to this fork's GitHub
-# Container Registry so `docker compose up` can pull it — no Docker Hub secrets
-# needed, only the built-in GITHUB_TOKEN.
-#
-# Deliberately plain: the image name/tags are computed with shell instead of
-# docker/metadata-action (which was failing here and skipping the build, so a
-# fixed image never shipped), and we build linux/amd64 only — every node runs
-# on x86 and the emulated arm64 leg tripled build time for nothing.
+# Builds the multi-backend HPX node image and pushes it to GHCR.
 on:
   push:
     branches: [main]
@@ -27,17 +20,16 @@ jobs:
         id: img
         run: |
           set -eux
-          image="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-          tags="${image}:latest,${image}:${GITHUB_SHA::7}"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/${owner}/hpxnode"
+          alias="ghcr.io/${owner}/hpx-node"
+          tags="${image}:latest,${image}:${GITHUB_SHA::7},${alias}:latest,${alias}:${GITHUB_SHA::7}"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            tags="${tags},${image}:${GITHUB_REF_NAME}"
+            tags="${tags},${image}:${GITHUB_REF_NAME},${alias}:${GITHUB_REF_NAME}"
           fi
           echo "image=${image}" >> "$GITHUB_OUTPUT"
           echo "tags=${tags}"   >> "$GITHUB_OUTPUT"
 
-      # The host-firewall rules decide whether tunnel traffic reaches the internet
-      # at all, and a mistake there is invisible until a user reports "connects but
-      # nothing works" — so they get tested before anything ships.
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
