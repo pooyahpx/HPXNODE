@@ -1,0 +1,449 @@
+package xray
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	nodeLogger "github.com/pooyahpx/HPXNODE/logger"
+)
+
+type Core struct {
+	executablePath            string
+	assetsPath                string
+	configPath                string
+	version                   string
+	process                   *exec.Cmd
+	processPID                int
+	restarting                bool
+	stopping                  bool
+	waitDone                  chan struct{}
+	logsChan                  chan string
+	logPhase                  uint32
+	startupLogs               *startupLogRing
+	startupLogSize            int
+	startupFailure            string
+	startupDiagnosticsEnabled bool
+	runtimeLogs               *startupLogRing
+	unixSocketPaths           []string
+	logger                    *nodeLogger.Logger
+	cancelFunc                context.CancelFunc
+	mu                        sync.Mutex
+	startupMu                 sync.RWMutex
+	runtimeMu                 sync.RWMutex
+}
+
+func NewXRayCore(executablePath, assetsPath, configPath string, logBufferSize, startupLogTailSize int) (*Core, error) {
+	if startupLogTailSize <= 0 {
+		startupLogTailSize = 200
+	}
+
+	core := &Core{
+		executablePath: executablePath,
+		assetsPath:     assetsPath,
+		configPath:     configPath,
+		logsChan:       make(chan string, logBufferSize),
+		logPhase:       logPhaseRuntime,
+		startupLogSize: startupLogTailSize,
+		runtimeLogs:    newStartupLogRing(10),
+	}
+
+	version, err := core.refreshVersion()
+	if err != nil {
+		return nil, err
+	}
+	core.version = version
+
+	return core, nil
+}
+
+func (c *Core) GenerateConfigFile(config []byte) error {
+	var prettyJSON bytes.Buffer
+
+	if err := json.Indent(&prettyJSON, config, "", "    "); err != nil {
+		return err
+	}
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(c.configPath, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %v", err)
+	}
+
+	jsonFile, err := os.Create(filepath.Join(c.configPath, "xray.json"))
+	if err != nil {
+		return err
+	}
+	defer jsonFile.Close()
+
+	_, err = jsonFile.Write(prettyJSON.Bytes())
+	return err
+}
+
+// DetectVersion returns the installed Xray-core version at the given path,
+// without needing a running Core. Returns "unknown" if it can't be determined.
+func DetectVersion(executablePath string) string {
+	cmd := exec.Command(executablePath, "version")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "unknown"
+	}
+	if m := regexp.MustCompile(`^Xray (\d+\.\d+\.\d+)`).FindStringSubmatch(out.String()); len(m) > 1 {
+		return m[1]
+	}
+	return "unknown"
+}
+
+func (c *Core) refreshVersion() (string, error) {
+	cmd := exec.Command(c.executablePath, "version")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	r := regexp.MustCompile(`^Xray (\d+\.\d+\.\d+)`)
+	matches := r.FindStringSubmatch(out.String())
+	if len(matches) > 1 {
+		return matches[1], nil
+	}
+
+	return "", errors.New("could not parse Xray version")
+}
+
+func (c *Core) Version() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.version
+}
+
+func (c *Core) Started() bool {
+	if c.process == nil || c.process.Process == nil {
+		return false
+	}
+	if c.process.ProcessState == nil {
+		return true
+	}
+	return false
+}
+
+func collectUnixSocketPaths(cfg *Config) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	paths := make([]string, 0)
+
+	for _, inbound := range cfg.InboundConfigs {
+		if inbound == nil {
+			continue
+		}
+
+		listen := strings.TrimSpace(inbound.Listen)
+		if listen == "" {
+			continue
+		}
+
+		path, _, _ := strings.Cut(listen, ",")
+		path = strings.TrimSpace(path)
+		if !strings.HasPrefix(path, "/") {
+			continue
+		}
+
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+
+	return paths
+}
+
+func removeUnixSocketFiles(paths []string) {
+	for _, path := range paths {
+		info, err := os.Lstat(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Printf("warning: failed to stat unix socket %s: %v", path, err)
+			}
+			continue
+		}
+
+		if info.Mode()&os.ModeSocket == 0 {
+			continue
+		}
+
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			log.Printf("warning: failed to remove unix socket %s: %v", path, err)
+		}
+	}
+}
+
+func (c *Core) Start(xConfig *Config, debugMode bool) error {
+	accessFile, errorFile := xConfig.GetLogFiles()
+
+	bytesConfig, err := xConfig.ToBytes()
+	if debugMode {
+		if err = c.GenerateConfigFile(bytesConfig); err != nil {
+			return err
+		}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if already started after acquiring lock to prevent race condition
+	if c.Started() {
+		return errors.New("xray is started already")
+	}
+
+	c.runtimeMu.Lock()
+	c.runtimeLogs.reset()
+	c.runtimeMu.Unlock()
+
+	c.EnableStartupDiagnostics(c.startupLogSize)
+	c.setStartupLogPhase()
+
+	// Clean up any orphaned xray processes before starting new one
+	if err := c.cleanupOrphanedProcesses(); err != nil {
+		log.Printf("warning: failed to cleanup orphaned processes: %v", err)
+	}
+
+	// Force kill any orphaned process in this Core instance before starting new one
+	if c.process != nil && c.process.Process != nil {
+		pid := c.process.Process.Pid
+		_ = c.process.Process.Kill()
+		_ = killProcessTree(pid)
+		c.process = nil
+		c.processPID = 0
+	}
+
+	socketPaths := collectUnixSocketPaths(xConfig)
+	removeUnixSocketFiles(socketPaths)
+
+	cmd := exec.Command(c.executablePath, "-c", "stdin:")
+	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+c.assetsPath)
+	// Set process attributes for proper process management
+	setProcAttributes(cmd)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+
+	// Create a new logger for this core instance
+	c.logger = nodeLogger.New(debugMode)
+	if err = c.logger.SetLogFile(accessFile, errorFile); err != nil {
+		return err
+	}
+
+	cmd.Stdin = bytes.NewBuffer(bytesConfig)
+	if err = cmd.Start(); err != nil {
+		return err
+	}
+	c.process = cmd
+	c.processPID = cmd.Process.Pid
+	c.stopping = false
+	c.waitDone = make(chan struct{})
+	c.unixSocketPaths = socketPaths
+
+	// Wait for the process to exit to prevent zombie processes
+	waitDone := c.waitDone
+	go func() {
+		waitErr := cmd.Wait()
+		close(waitDone)
+		c.handleProcessExit(cmd, waitErr)
+	}()
+
+	ctxCore, cancel := context.WithCancel(context.Background())
+	c.cancelFunc = cancel
+
+	// Start capturing process logs
+	go c.captureProcessLogs(ctxCore, stdout)
+
+	return nil
+}
+
+func (c *Core) handleProcessExit(cmd *exec.Cmd, err error) {
+	c.mu.Lock()
+	expected := c.stopping || c.process != cmd
+	c.mu.Unlock()
+
+	if expected {
+		return
+	}
+
+	message := "xray process exited unexpectedly"
+	if err != nil {
+		message = fmt.Sprintf("%s: %v", message, err)
+	}
+
+	log.Println(message)
+	c.recordProcessLog(message)
+}
+
+func (c *Core) Stop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	started := c.Started()
+	if !started && c.process == nil && c.cancelFunc == nil && c.logger == nil && len(c.unixSocketPaths) == 0 {
+		return
+	}
+
+	if started {
+		pid := c.process.Process.Pid
+		c.processPID = pid
+		waitDone := c.waitDone
+		c.stopping = true
+
+		// Kill the process
+		_ = c.process.Process.Kill()
+
+		// Wait for the process watcher to reap the process.
+		select {
+		case <-waitDone:
+			// Process terminated
+		case <-time.After(5 * time.Second):
+			// Timeout - try force kill
+			log.Printf("xray process %d did not terminate within timeout, force killing", pid)
+			_ = killProcessTree(pid)
+		}
+
+		// Verify process is actually dead
+		if err := verifyProcessDead(pid); err != nil {
+			log.Printf("warning: xray process %d may still be running: %v", pid, err)
+			// Try one more time to kill it
+			_ = killProcessTree(pid)
+		}
+	}
+	socketPaths := append([]string(nil), c.unixSocketPaths...)
+	c.process = nil
+	c.processPID = 0
+	c.stopping = false
+	c.waitDone = nil
+	c.unixSocketPaths = nil
+	removeUnixSocketFiles(socketPaths)
+
+	if c.cancelFunc != nil {
+		c.cancelFunc()
+		c.cancelFunc = nil
+	}
+
+	if c.logger != nil {
+		c.logger.Close()
+		c.logger = nil
+	}
+	c.SwitchToRuntimeLogPhase()
+
+	log.Println("xray core stopped")
+}
+
+func (c *Core) Restart(config *Config, debugMode bool) error {
+	c.mu.Lock()
+	if c.restarting {
+		c.mu.Unlock()
+		return errors.New("xray is already restarting")
+	}
+	c.restarting = true
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		c.restarting = false
+		c.mu.Unlock()
+	}()
+
+	log.Println("restarting Xray core...")
+	c.Stop()
+	if err := c.Start(config, debugMode); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Core) Restarting() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.restarting
+}
+
+func (c *Core) Logs() <-chan string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.logsChan
+}
+
+// ProcessInfo holds information about a process
+type ProcessInfo struct {
+	PID      int
+	PPID     int
+	IsZombie bool
+}
+
+// cleanupOrphanedProcesses finds and kills xray processes that are:
+// 1. Zombie processes (orphaned from their parent)
+// 2. Processes where the node itself is the parent (PPID matches node PID)
+func (c *Core) cleanupOrphanedProcesses() error {
+	processes, err := findXrayProcesses(c.executablePath)
+	if err != nil {
+		return fmt.Errorf("failed to find xray processes: %w", err)
+	}
+
+	currentPID := 0
+	if c.process != nil && c.process.Process != nil {
+		currentPID = c.process.Process.Pid
+	}
+
+	// Get current node process PID
+	nodePID := os.Getpid()
+
+	killedCount := 0
+	for _, procInfo := range processes {
+		if procInfo.PID == currentPID {
+			continue
+		}
+
+		// Only clean up processes we own (parented by this node process)
+		// or zombies that have been reparented to init (no real parent).
+		kill := false
+		reason := ""
+		if procInfo.IsZombie && (procInfo.PPID == 0 || procInfo.PPID == 1) {
+			kill = true
+			reason = "zombie xray process without parent"
+		} else if procInfo.PPID == nodePID {
+			kill = true
+			reason = fmt.Sprintf("orphaned xray process with node as parent (PPID: %d)", procInfo.PPID)
+		}
+
+		if !kill {
+			continue
+		}
+
+		log.Printf("%s %d (PPID: %d), killing it", reason, procInfo.PID, procInfo.PPID)
+		if err := killProcessTree(procInfo.PID); err != nil {
+			log.Printf("warning: failed to kill orphaned process %d: %v", procInfo.PID, err)
+		} else {
+			killedCount++
+		}
+	}
+
+	if killedCount > 0 {
+		log.Printf("cleaned up %d orphaned xray process(es)", killedCount)
+	}
+
+	return nil
+}

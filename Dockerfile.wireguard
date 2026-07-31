@@ -1,0 +1,25 @@
+FROM --platform=$BUILDPLATFORM golang:1.26.2-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN apk update && apk add --no-cache make
+
+WORKDIR /src
+
+COPY go* .
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make NAME=main build
+
+FROM alpine:latest
+
+LABEL org.opencontainers.image.source="https://github.com/pooyahpx/HPXNODE"
+
+RUN apk update && apk add --no-cache wireguard-tools nftables iproute2
+
+WORKDIR /app
+COPY --from=builder /src /app
+
+ENTRYPOINT ["./main"]

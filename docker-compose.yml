@@ -1,0 +1,37 @@
+services:
+  node:
+    image: ghcr.io/pooyahpx/hpx-node:latest
+    container_name: hpx-node
+    restart: always
+
+    # Host networking so the VPN ports (OpenVPN, WireGuard, IKEv2 500/4500) and the
+    # node's own NAT/forwarding rules land directly on the host.
+    network_mode: host
+
+    cap_add:
+      - NET_ADMIN   # tun/wg interfaces, iptables/nftables NAT, IPsec
+      - SYS_MODULE  # modprobe wireguard
+
+    devices:
+      - /dev/net/tun  # OpenVPN
+
+    environment:
+      # REQUIRED - any UUID; must match the API key you enter for this node in the panel.
+      API_KEY: "REPLACE-WITH-A-UUID"
+      SERVICE_PORT: 62050
+      SERVICE_PROTOCOL: "grpc"
+      # Enable the node's IPv4 forwarding + scoped VPN NAT (egress auto-detected;
+      # override with HPX_NODE_WG_NAT_OUTPUT_INTERFACE, e.g. eth0).
+      HPX_NODE_WG_HOST_ROUTING: "1"
+
+      # The image ships every backend; the panel decides which cores run here.
+      # To hard-disable one at the node regardless of the panel (it's then greyed
+      # out in the panel too), uncomment - e.g. an xray+wireguard-only node:
+      # HPX_NODE_DISABLE_OPENVPN: "1"
+      # HPX_NODE_DISABLE_IKEV2: "1"
+      # HPX_NODE_DISABLE_WIREGUARD: "1"
+      # HPX_NODE_DISABLE_XRAY: "1"
+
+    volumes:
+      - /lib/modules:/lib/modules:ro   # WireGuard kernel module from the host
+      - /var/lib/hpx-node:/var/lib/hpx-node
