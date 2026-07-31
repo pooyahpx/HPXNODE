@@ -3,7 +3,7 @@ FROM --platform=$BUILDPLATFORM golang:1.26.2-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN apk update && apk add --no-cache make curl bash sudo
+RUN apk update && apk add --no-cache make curl bash sudo unzip
 
 WORKDIR /src
 

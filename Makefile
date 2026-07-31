@@ -125,9 +125,9 @@ ifeq ($(UNAME_S),Linux)
 	if [ "$(DISTRO)" = "debian" ] || [ "$(DISTRO)" = "ubuntu" ] || \
 	   [ "$(DISTRO)" = "centos" ] || [ "$(DISTRO)" = "rhel" ] || [ "$(DISTRO)" = "fedora" ] || \
 	   [ "$(DISTRO)" = "arch" ]; then \
-		curl -L https://github.com/HPXPANEL/scripts/raw/main/install_core.sh | sudo bash -s -- $(XRAY_INSTALL_ARGS); \
+		bash "$(CURDIR)/scripts/install_xray_core.sh" $(XRAY_INSTALL_ARGS); \
 	else \
-		curl -L https://github.com/HPXPANEL/scripts/raw/main/install_core.sh | bash -s -- $(XRAY_INSTALL_ARGS); \
+		bash "$(CURDIR)/scripts/install_xray_core.sh" $(XRAY_INSTALL_ARGS); \
 	fi
 
 else
