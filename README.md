@@ -7,10 +7,10 @@ Docs: https://pooyahpx.github.io/HPXPANEL/
 ## One-click install (recommended)
 
 ```bash
-sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh)" @ install
+sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh)" @ install -y
 ```
 
-Interactive menu (toggle backends, set port / API key):
+Interactive menu (toggle backends, set port / API key / instance name):
 
 ```bash
 sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh)"
@@ -24,13 +24,31 @@ sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/
   --disable openvpn
 ```
 
+### Multiple nodes on one server (resale)
+
+Each instance needs a unique **`--name`** and **`--service-port`** (panel Node Port). Register each in **HPXPANEL → Nodes**.
+
+```bash
+sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh)" @ install -y \
+  --name shop1 --service-port 62051
+
+sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh)" @ install -y \
+  --name shop2 --service-port 62052
+
+sudo hpx-node list
+sudo hpx-node --name shop1 status
+```
+
+Paths: `/opt/hpx-node-shop1`, `/var/lib/hpx-node-shop1`, …  
+Also give each panel node **different VPN/inbound ports** (host networking — ports cannot collide).
+
 After install, register the node in **HPXPANEL → Nodes** with the printed **Address**, **Node Port**, **API key**, and **Server CA**.
 
 | Path | Purpose |
 | --- | --- |
-| `/opt/hpx-node` | Compose + installer |
-| `/var/lib/hpx-node` | Certs + generated configs |
-| `hpx-node status` / `logs` / `update` | Manage the node |
+| `/opt/hpx-node` or `/opt/hpx-node-<name>` | Compose + installer |
+| `/var/lib/hpx-node` or `/var/lib/hpx-node-<name>` | Certs + generated configs |
+| `hpx-node list` / `status` / `logs` / `update` | Manage instances |
 
 ## Features
 
