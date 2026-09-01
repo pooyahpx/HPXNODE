@@ -6,25 +6,29 @@ Docs: https://pooyahpx.github.io/HPXPANEL/
 
 ## One-click install (recommended)
 
-Save to a file first (safer than embedding the whole script in `bash -c`):
+Prompts **only Node Port + API Port**, then installs:
 
 ```bash
 curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh -o /tmp/hpx-node.sh
-sudo bash /tmp/hpx-node.sh install -y
+sudo bash /tmp/hpx-node.sh install
 ```
 
-Interactive menu (toggle backends, set port / API key / instance name):
+Or one-liner:
 
 ```bash
-curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh -o /tmp/hpx-node.sh
-sudo bash /tmp/hpx-node.sh
+sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh)" @ install
 ```
 
-Non-interactive example:
+Full interactive menu (backends, image, instance name):
 
 ```bash
-curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/main/scripts/install.sh -o /tmp/hpx-node.sh
-sudo bash /tmp/hpx-node.sh install -y --service-port 62050 --disable openvpn
+sudo bash /tmp/hpx-node.sh menu
+```
+
+Non-interactive custom ports:
+
+```bash
+sudo bash /tmp/hpx-node.sh install -y --service-port 63000 --api-port 63001 --api-key YOUR-UUID
 ```
 
 ### Multiple nodes on one server (resale)
