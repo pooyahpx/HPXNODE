@@ -103,9 +103,9 @@ ARG TARGETARCH
 RUN set -eux; \
     arch="${TARGETARCH:-amd64}"; \
     case "$arch" in \
-      amd64) darch=x86_64 ;; \
-      arm64) darch=aarch64 ;; \
-      *) darch=x86_64 ;; \
+      amd64) darch=x86_64; carch=x86_64 ;; \
+      arm64) darch=aarch64; carch=aarch64 ;; \
+      *) darch=x86_64; carch=x86_64 ;; \
     esac; \
     ver=27.5.1; \
     curl -fsSL "https://download.docker.com/linux/static/stable/${darch}/docker-${ver}.tgz" \
@@ -113,7 +113,7 @@ RUN set -eux; \
       install -m 0755 /tmp/docker/docker /usr/local/bin/docker && \
       rm -rf /tmp/docker; \
     mkdir -p /usr/local/lib/docker/cli-plugins; \
-    curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-${arch}" \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-${carch}" \
       -o /usr/local/lib/docker/cli-plugins/docker-compose && \
       chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
