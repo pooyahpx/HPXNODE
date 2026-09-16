@@ -204,7 +204,7 @@ func newWithManagerFactory(cfg *config.Config, wgConfig *Config, users []*common
 		return nil, fmt.Errorf("invalid wireguard private key: %w", err)
 	}
 
-	normalizedUsers := normalizeUsers(users)
+	normalizedUsers := wg.normalizeUsers(users)
 	// Seed per-user limits from the startup set too, not only on later syncs —
 	// otherwise a user's device and speed limits are ignored until the panel
 	// happens to push an update.

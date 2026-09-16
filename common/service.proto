@@ -24,6 +24,14 @@ enum BackendType {
   OPENVPN = 2;
   IKEV2 = 3;
   L2TP = 4;
+  PPTP = 5;
+  OPENCONNECT = 6;
+  SSTP = 7;
+  WG_C = 8;
+  AMNEZIAWG = 9;
+  GRE = 10;
+  SSH = 11;
+  MTPROTO = 12;
 }
 
 message Backend {
@@ -161,6 +169,34 @@ message Ikev2 {
     string password = 2;
 }
 
+// Username/password credentials for PPTP / OpenConnect / SSTP / SSH.
+message Credential {
+    string username = 1;
+    string password = 2;
+}
+
+message Gre {
+    string peer_ip = 1;
+}
+
+message Mtproto {
+    string secret = 1;
+}
+
+message AnyTLS {
+    string password = 1;
+}
+
+message Tuic {
+    string id = 1;
+    string password = 2;
+}
+
+message Naive {
+    string username = 1;
+    string password = 2;
+}
+
 message Proxy {
     Vmess vmess = 1;
     Vless vless = 2;
@@ -170,6 +206,17 @@ message Proxy {
     Hysteria hysteria = 6;
     Openvpn openvpn = 7;
     Ikev2 ikev2 = 8;
+    Credential pptp = 9;
+    Credential openconnect = 10;
+    Credential sstp = 11;
+    Credential ssh = 12;
+    Wireguard wg_c = 13;
+    Wireguard amneziawg = 14;
+    Gre gre = 15;
+    Mtproto mtproto = 16;
+    AnyTLS anytls = 17;
+    Tuic tuic = 18;
+    Naive naive = 19;
 }
 
 message User {

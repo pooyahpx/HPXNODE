@@ -198,6 +198,67 @@ func NewHysteriaAccount(user *common.User) *HysteriaAccount {
 	}
 }
 
+// AnyTLS / TUIC / Naive are served by a sing-box sidecar. Account Message()
+// still serializes a password-style Trojan account so HandlerService sync paths
+// remain usable if an inbound is ever left in stock xray-core.
+
+type AnyTLSAccount struct {
+	BaseAccount
+	Password string `json:"password"`
+}
+
+func (a *AnyTLSAccount) Message() (*serial.TypedMessage, error) {
+	return ToTypedMessage(&trojan.Account{Password: a.Password})
+}
+
+func NewAnyTLSAccount(user *common.User) *AnyTLSAccount {
+	return &AnyTLSAccount{
+		BaseAccount: BaseAccount{Email: user.GetEmail(), Level: 0},
+		Password:    user.GetProxies().GetAnytls().GetPassword(),
+	}
+}
+
+type TuicAccount struct {
+	BaseAccount
+	ID       uuid.UUID `json:"id"`
+	Password string    `json:"password"`
+}
+
+func (a *TuicAccount) Message() (*serial.TypedMessage, error) {
+	return ToTypedMessage(&trojan.Account{Password: a.Password})
+}
+
+func NewTuicAccount(user *common.User) (*TuicAccount, error) {
+	id, err := uuid.Parse(user.GetProxies().GetTuic().GetId())
+	if err != nil {
+		return nil, err
+	}
+	return &TuicAccount{
+		BaseAccount: BaseAccount{Email: user.GetEmail(), Level: 0},
+		ID:          id,
+		Password:    user.GetProxies().GetTuic().GetPassword(),
+	}, nil
+}
+
+type NaiveAccount struct {
+	BaseAccount
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (a *NaiveAccount) Message() (*serial.TypedMessage, error) {
+	return ToTypedMessage(&trojan.Account{Password: a.Password})
+}
+
+func NewNaiveAccount(user *common.User) *NaiveAccount {
+	n := user.GetProxies().GetNaive()
+	return &NaiveAccount{
+		BaseAccount: BaseAccount{Email: user.GetEmail(), Level: 0},
+		Username:    n.GetUsername(),
+		Password:    n.GetPassword(),
+	}
+}
+
 type ProxySettings struct {
 	Vmess           *VmessAccount
 	Vless           *VlessAccount
@@ -205,4 +266,7 @@ type ProxySettings struct {
 	Shadowsocks     *ShadowsocksTcpAccount
 	Shadowsocks2022 *ShadowsocksAccount
 	Hysteria        *HysteriaAccount
+	AnyTLS          *AnyTLSAccount
+	Tuic            *TuicAccount
+	Naive           *NaiveAccount
 }

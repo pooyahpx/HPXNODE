@@ -21,6 +21,10 @@ type Config struct {
 	EgressInterface string         `json:"egress_interface"`
 	Latency         *LatencyConfig `json:"latency,omitempty"`
 
+	// ProxyField selects which Proxy oneof supplies peers. Empty/"wireguard"
+	// uses GetWireguard(); "wg_c" uses GetWgC(); "amneziawg" uses GetAmneziawg().
+	ProxyField string `json:"-"`
+
 	privateKeyValue   wgtypes.Key
 	privateKeySet     bool
 	presharedKeyValue *wgtypes.Key

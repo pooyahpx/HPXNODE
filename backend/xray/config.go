@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/pooyahpx/HPXNODE/backend/singbox"
 	"github.com/pooyahpx/HPXNODE/backend/xray/api"
 	"github.com/pooyahpx/HPXNODE/common"
 
@@ -25,6 +26,9 @@ const (
 	Trojan      = "trojan"
 	Shadowsocks = "shadowsocks"
 	Hysteria    = "hysteria"
+	AnyTLS      = "anytls"
+	Tuic        = "tuic"
+	Naive       = "naive"
 )
 
 type Config struct {
@@ -41,6 +45,10 @@ type Config struct {
 	FakeDNS          map[string]any     `json:"fakeDns,omitempty"`
 	Observatory      map[string]any     `json:"observatory,omitempty"`
 	BurstObservatory map[string]any     `json:"burstObservatory,omitempty"`
+
+	// sidecarInbounds are anytls/tuic/naive inbounds stripped from the xray
+	// config and served by a sing-box sidecar process instead.
+	sidecarInbounds []*singbox.Inbound `json:"-"`
 }
 
 type Inbound struct {
@@ -199,6 +207,38 @@ func (i *Inbound) syncUsers(users []*common.User) {
 				i.clients[user.GetEmail()] = api.NewHysteriaAccount(user)
 			}
 		}
+
+	case AnyTLS:
+		for _, user := range users {
+			if user.GetProxies().GetAnytls() == nil {
+				continue
+			}
+			if slices.Contains(user.Inbounds, i.Tag) {
+				i.clients[user.GetEmail()] = api.NewAnyTLSAccount(user)
+			}
+		}
+
+	case Tuic:
+		for _, user := range users {
+			if user.GetProxies().GetTuic() == nil {
+				continue
+			}
+			if slices.Contains(user.Inbounds, i.Tag) {
+				if acc, err := api.NewTuicAccount(user); err == nil {
+					i.clients[user.GetEmail()] = acc
+				}
+			}
+		}
+
+	case Naive:
+		for _, user := range users {
+			if user.GetProxies().GetNaive() == nil {
+				continue
+			}
+			if slices.Contains(user.Inbounds, i.Tag) {
+				i.clients[user.GetEmail()] = api.NewNaiveAccount(user)
+			}
+		}
 	}
 }
 
@@ -234,6 +274,15 @@ func (i *Inbound) updateUser(account api.Account) {
 		}
 
 	case *api.HysteriaAccount:
+		i.clients[email] = a
+
+	case *api.AnyTLSAccount:
+		i.clients[email] = a
+
+	case *api.TuicAccount:
+		i.clients[email] = a
+
+	case *api.NaiveAccount:
 		i.clients[email] = a
 	}
 }
@@ -288,6 +337,27 @@ func (i *Inbound) updateUsers(accounts []api.Account, removeEmails []string) {
 	case Hysteria:
 		for _, account := range accounts {
 			if a, ok := account.(*api.HysteriaAccount); ok {
+				i.clients[account.GetEmail()] = a
+			}
+		}
+
+	case AnyTLS:
+		for _, account := range accounts {
+			if a, ok := account.(*api.AnyTLSAccount); ok {
+				i.clients[account.GetEmail()] = a
+			}
+		}
+
+	case Tuic:
+		for _, account := range accounts {
+			if a, ok := account.(*api.TuicAccount); ok {
+				i.clients[account.GetEmail()] = a
+			}
+		}
+
+	case Naive:
+		for _, account := range accounts {
+			if a, ok := account.(*api.NaiveAccount); ok {
 				i.clients[account.GetEmail()] = a
 			}
 		}
@@ -383,6 +453,33 @@ func (c *Config) ToBytes() ([]byte, error) {
 			for _, account := range i.clients {
 				if hyAccount, ok := account.(*api.HysteriaAccount); ok {
 					clients = append(clients, hyAccount)
+				}
+			}
+			i.Settings["clients"] = clients
+
+		case AnyTLS:
+			clients := make([]*api.AnyTLSAccount, 0, len(i.clients))
+			for _, account := range i.clients {
+				if a, ok := account.(*api.AnyTLSAccount); ok {
+					clients = append(clients, a)
+				}
+			}
+			i.Settings["clients"] = clients
+
+		case Tuic:
+			clients := make([]*api.TuicAccount, 0, len(i.clients))
+			for _, account := range i.clients {
+				if a, ok := account.(*api.TuicAccount); ok {
+					clients = append(clients, a)
+				}
+			}
+			i.Settings["clients"] = clients
+
+		case Naive:
+			clients := make([]*api.NaiveAccount, 0, len(i.clients))
+			for _, account := range i.clients {
+				if a, ok := account.(*api.NaiveAccount); ok {
+					clients = append(clients, a)
 				}
 			}
 			i.Settings["clients"] = clients
@@ -821,6 +918,8 @@ func NewConfig(config string, exclude []string) (*Config, error) {
 		return nil, err
 	}
 
+	kept := make([]*Inbound, 0, len(xrayConfig.InboundConfigs))
+	var sidecar []*singbox.Inbound
 	for _, i := range xrayConfig.InboundConfigs {
 		if i.clients == nil {
 			i.clients = make(map[string]api.Account)
@@ -830,7 +929,20 @@ func NewConfig(config string, exclude []string) (*Config, error) {
 			i.exclude = true
 			i.mu.Unlock()
 		}
+		if singbox.IsSidecarProtocol(i.Protocol) {
+			sidecar = append(sidecar, &singbox.Inbound{
+				Tag:      i.Tag,
+				Protocol: i.Protocol,
+				Listen:   i.Listen,
+				Port:     singbox.PortFromAny(i.Port),
+				Settings: i.Settings,
+			})
+			continue
+		}
+		kept = append(kept, i)
 	}
+	xrayConfig.InboundConfigs = kept
+	xrayConfig.sidecarInbounds = sidecar
 
 	return &xrayConfig, nil
 }

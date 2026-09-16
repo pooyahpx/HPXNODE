@@ -14,10 +14,18 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/pooyahpx/HPXNODE/backend"
+	"github.com/pooyahpx/HPXNODE/backend/amneziawg"
+	"github.com/pooyahpx/HPXNODE/backend/gre"
 	"github.com/pooyahpx/HPXNODE/backend/ikev2"
 	"github.com/pooyahpx/HPXNODE/backend/l2tp"
+	"github.com/pooyahpx/HPXNODE/backend/mtproto"
+	"github.com/pooyahpx/HPXNODE/backend/openconnect"
 	"github.com/pooyahpx/HPXNODE/backend/openvpn"
+	"github.com/pooyahpx/HPXNODE/backend/pptp"
 	"github.com/pooyahpx/HPXNODE/backend/ratelimit"
+	"github.com/pooyahpx/HPXNODE/backend/sshvpn"
+	"github.com/pooyahpx/HPXNODE/backend/sstp"
+	"github.com/pooyahpx/HPXNODE/backend/wg_c"
 	"github.com/pooyahpx/HPXNODE/backend/wireguard"
 	"github.com/pooyahpx/HPXNODE/backend/xray"
 	"github.com/pooyahpx/HPXNODE/common"
@@ -144,11 +152,19 @@ func (c *Controller) NewRequest() {
 // a container run a fixed subset of backends like the interactive installer does.
 func backendDisabled(t common.BackendType) bool {
 	names := map[common.BackendType][]string{
-		common.BackendType_XRAY:      {"HPX_NODE_DISABLE_XRAY"},
-		common.BackendType_OPENVPN:   {"HPX_NODE_DISABLE_OPENVPN"},
-		common.BackendType_WIREGUARD: {"HPX_NODE_DISABLE_WIREGUARD", "HPX_NODE_DISABLE_WG"},
-		common.BackendType_IKEV2:     {"HPX_NODE_DISABLE_IKEV2"},
-		common.BackendType_L2TP:      {"HPX_NODE_DISABLE_L2TP"},
+		common.BackendType_XRAY:       {"HPX_NODE_DISABLE_XRAY"},
+		common.BackendType_OPENVPN:    {"HPX_NODE_DISABLE_OPENVPN"},
+		common.BackendType_WIREGUARD:  {"HPX_NODE_DISABLE_WIREGUARD", "HPX_NODE_DISABLE_WG"},
+		common.BackendType_IKEV2:      {"HPX_NODE_DISABLE_IKEV2"},
+		common.BackendType_L2TP:       {"HPX_NODE_DISABLE_L2TP"},
+		common.BackendType_PPTP:       {"HPX_NODE_DISABLE_PPTP"},
+		common.BackendType_OPENCONNECT: {"HPX_NODE_DISABLE_OPENCONNECT"},
+		common.BackendType_SSTP:       {"HPX_NODE_DISABLE_SSTP"},
+		common.BackendType_WG_C:       {"HPX_NODE_DISABLE_WG_C", "HPX_NODE_DISABLE_WGC"},
+		common.BackendType_AMNEZIAWG:  {"HPX_NODE_DISABLE_AMNEZIAWG"},
+		common.BackendType_GRE:        {"HPX_NODE_DISABLE_GRE"},
+		common.BackendType_SSH:        {"HPX_NODE_DISABLE_SSH"},
+		common.BackendType_MTPROTO:    {"HPX_NODE_DISABLE_MTPROTO"},
 	}
 	for _, n := range names[t] {
 		switch strings.ToLower(strings.TrimSpace(os.Getenv(n))) {
@@ -261,6 +277,111 @@ func (c *Controller) StartBackend(ctx context.Context, backendCfg *common.Backen
 		if err != nil {
 			return err
 		}
+
+	case common.BackendType_PPTP:
+		if err := pptp.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := pptp.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = pptp.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_OPENCONNECT:
+		if err := openconnect.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := openconnect.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = openconnect.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_SSTP:
+		if err := sstp.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := sstp.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = sstp.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_WG_C:
+		if err := wg_c.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := wg_c.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = wg_c.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_AMNEZIAWG:
+		if err := amneziawg.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := amneziawg.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = amneziawg.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_GRE:
+		if err := gre.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := gre.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = gre.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_SSH:
+		if err := sshvpn.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := sshvpn.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = sshvpn.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
+	case common.BackendType_MTPROTO:
+		if err := mtproto.CheckDeps(); err != nil {
+			return err
+		}
+		config, err := mtproto.NewConfig(backendCfg.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err = mtproto.New(c.cfg, config, backendCfg.GetUsers())
+		if err != nil {
+			return err
+		}
+
 	default:
 		return errors.New("invalid backend type")
 	}
@@ -417,9 +538,11 @@ func (c *Controller) SystemStats(ctx context.Context) *common.SystemStatsRespons
 func backendInstanceID(t common.BackendType, configStr string) string {
 	var field string
 	switch t {
-	case common.BackendType_OPENVPN, common.BackendType_IKEV2, common.BackendType_L2TP:
+	case common.BackendType_OPENVPN, common.BackendType_IKEV2, common.BackendType_L2TP,
+		common.BackendType_PPTP, common.BackendType_OPENCONNECT, common.BackendType_SSTP,
+		common.BackendType_GRE, common.BackendType_SSH, common.BackendType_MTPROTO:
 		field = "inbound_tag"
-	case common.BackendType_WIREGUARD:
+	case common.BackendType_WIREGUARD, common.BackendType_WG_C, common.BackendType_AMNEZIAWG:
 		field = "interface_name"
 	default:
 		return ""
@@ -447,6 +570,22 @@ func backendTypeKey(t common.BackendType) string {
 		return "ikev2"
 	case common.BackendType_L2TP:
 		return "l2tp"
+	case common.BackendType_PPTP:
+		return "pptp"
+	case common.BackendType_OPENCONNECT:
+		return "openconnect"
+	case common.BackendType_SSTP:
+		return "sstp"
+	case common.BackendType_WG_C:
+		return "wg_c"
+	case common.BackendType_AMNEZIAWG:
+		return "amneziawg"
+	case common.BackendType_GRE:
+		return "gre"
+	case common.BackendType_SSH:
+		return "ssh"
+	case common.BackendType_MTPROTO:
+		return "mtproto"
 	default:
 		return t.String()
 	}
@@ -535,6 +674,38 @@ func (c *Controller) capabilities() ([]common.BackendType, map[string]string) {
 		if !backendDisabled(common.BackendType_L2TP) && l2tp.CheckDeps() == nil {
 			avail = append(avail, common.BackendType_L2TP)
 			versions["l2tp"] = l2tp.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_PPTP) && pptp.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_PPTP)
+			versions["pptp"] = pptp.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_OPENCONNECT) && openconnect.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_OPENCONNECT)
+			versions["openconnect"] = openconnect.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_SSTP) && sstp.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_SSTP)
+			versions["sstp"] = sstp.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_WG_C) && wg_c.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_WG_C)
+			versions["wg_c"] = wg_c.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_AMNEZIAWG) && amneziawg.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_AMNEZIAWG)
+			versions["amneziawg"] = amneziawg.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_GRE) && gre.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_GRE)
+			versions["gre"] = gre.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_SSH) && sshvpn.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_SSH)
+			versions["ssh"] = sshvpn.DetectVersion()
+		}
+		if !backendDisabled(common.BackendType_MTPROTO) && mtproto.CheckDeps() == nil {
+			avail = append(avail, common.BackendType_MTPROTO)
+			versions["mtproto"] = mtproto.DetectVersion()
 		}
 		c.capsAvail = avail
 		c.capsVersions = versions

@@ -38,6 +38,20 @@ func setupUserAccount(user *common.User) (api.ProxySettings, error) {
 		settings.Hysteria = api.NewHysteriaAccount(user)
 	}
 
+	if user.GetProxies().GetAnytls() != nil {
+		settings.AnyTLS = api.NewAnyTLSAccount(user)
+	}
+
+	if user.GetProxies().GetTuic() != nil {
+		if acc, err := api.NewTuicAccount(user); err == nil {
+			settings.Tuic = acc
+		}
+	}
+
+	if user.GetProxies().GetNaive() != nil {
+		settings.Naive = api.NewNaiveAccount(user)
+	}
+
 	return settings, nil
 }
 
@@ -112,6 +126,24 @@ func isActiveInbound(inbound *Inbound, inbounds []string, settings api.ProxySett
 				return nil, false
 			}
 			return settings.Hysteria, true
+
+		case AnyTLS:
+			if settings.AnyTLS == nil {
+				return nil, false
+			}
+			return settings.AnyTLS, true
+
+		case Tuic:
+			if settings.Tuic == nil {
+				return nil, false
+			}
+			return settings.Tuic, true
+
+		case Naive:
+			if settings.Naive == nil {
+				return nil, false
+			}
+			return settings.Naive, true
 		}
 	}
 	return nil, false
@@ -153,6 +185,7 @@ func (x *Xray) SyncUser(ctx context.Context, user *common.User) error {
 		return errors.New("failed to add user:" + errMessage)
 	}
 	x.rememberUsers([]*common.User{user}, false)
+	x.syncSingboxUsers([]*common.User{user}, false)
 	return nil
 }
 
@@ -165,6 +198,7 @@ func (x *Xray) SyncUsers(ctx context.Context, users []*common.User) error {
 		return err
 	}
 	x.rememberUsers(users, true)
+	x.syncSingboxUsers(users, true)
 	return nil
 }
 
@@ -200,6 +234,7 @@ func (x *Xray) UpdateUsers(ctx context.Context, users []*common.User) error {
 	}
 
 	x.rememberUsers(users, false)
+	x.syncSingboxUsers(users, false)
 	return nil
 }
 
@@ -212,5 +247,35 @@ func (x *Xray) UpdateUsersAndRestart(ctx context.Context, users []*common.User) 
 		return err
 	}
 	x.rememberUsers(users, true)
+	x.syncSingboxUsers(users, true)
 	return nil
+}
+
+func (x *Xray) syncSingboxUsers(users []*common.User, replaceAll bool) {
+	x.mu.RLock()
+	sb := x.singbox
+	x.mu.RUnlock()
+	if sb == nil {
+		return
+	}
+	if replaceAll {
+		if err := sb.SyncUsers(users); err != nil {
+			log.Printf("sing-box sidecar sync: %v", err)
+		}
+		return
+	}
+	// Partial updates: merge into existing sidecar user set via full rewrite of
+	// the provided subset isn't enough; restart with remembered users.
+	all := make([]*common.User, 0)
+	x.limitMu.Lock()
+	for _, u := range x.userByEmail {
+		all = append(all, u)
+	}
+	x.limitMu.Unlock()
+	if len(all) == 0 {
+		all = users
+	}
+	if err := sb.SyncUsers(all); err != nil {
+		log.Printf("sing-box sidecar sync: %v", err)
+	}
 }

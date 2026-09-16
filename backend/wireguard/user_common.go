@@ -210,6 +210,20 @@ func peerIPAllowedOnInterface(peerNet *net.IPNet, ifaceNets []*net.IPNet) bool {
 	return false
 }
 
+func userWireguardProxy(user *common.User, proxyField string) *common.Wireguard {
+	if user == nil || user.GetProxies() == nil {
+		return nil
+	}
+	switch proxyField {
+	case "wg_c":
+		return user.GetProxies().GetWgC()
+	case "amneziawg":
+		return user.GetProxies().GetAmneziawg()
+	default:
+		return user.GetProxies().GetWireguard()
+	}
+}
+
 func (wg *WireGuard) collectDesiredPeers(users []*common.User) (map[string]*DesiredPeer, error) {
 	desiredPeers := make(map[string]*DesiredPeer)
 	seenIPs := make(map[string]string)
@@ -220,8 +234,12 @@ func (wg *WireGuard) collectDesiredPeers(users []*common.User) (map[string]*Desi
 		}
 
 		email := user.GetEmail()
-		publicKey := user.GetProxies().GetWireguard().GetPublicKey()
-		peerIps := user.GetProxies().GetWireguard().GetPeerIps()
+		wgProxy := userWireguardProxy(user, wg.config.ProxyField)
+		if wgProxy == nil {
+			continue
+		}
+		publicKey := wgProxy.GetPublicKey()
+		peerIps := wgProxy.GetPeerIps()
 
 		parsedKey, err := wgtypes.ParseKey(publicKey)
 		if err != nil {
@@ -307,16 +325,28 @@ func shouldIncludeUserInInterface(user *common.User, interfaceName string) bool 
 }
 
 func normalizeUsers(users []*common.User) []*common.User {
+	return normalizeUsersWithProxy(users, "")
+}
+
+func (wg *WireGuard) normalizeUsers(users []*common.User) []*common.User {
+	field := ""
+	if wg != nil && wg.config != nil {
+		field = wg.config.ProxyField
+	}
+	return normalizeUsersWithProxy(users, field)
+}
+
+func normalizeUsersWithProxy(users []*common.User, proxyField string) []*common.User {
 	lastByEmail := make(map[string]*common.User, len(users))
 
 	for _, user := range users {
+		wgProxy := userWireguardProxy(user, proxyField)
 		switch {
 		case user == nil,
 			user.GetEmail() == "",
-			user.GetProxies() == nil,
-			user.GetProxies().GetWireguard() == nil,
-			user.GetProxies().GetWireguard().GetPublicKey() == "",
-			len(user.GetProxies().GetWireguard().GetPeerIps()) == 0:
+			wgProxy == nil,
+			wgProxy.GetPublicKey() == "",
+			len(wgProxy.GetPeerIps()) == 0:
 			continue
 		}
 		lastByEmail[user.GetEmail()] = user

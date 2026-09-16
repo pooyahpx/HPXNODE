@@ -7,7 +7,7 @@ import (
 )
 
 func (wg *WireGuard) syncUsersFull(users []*common.User) error {
-	normalizedUsers := normalizeUsers(users)
+	normalizedUsers := wg.normalizeUsers(users)
 	existingByKey := wg.buildExistingPeersByKeySnapshot()
 
 	desiredPeers, err := wg.collectDesiredPeers(normalizedUsers)

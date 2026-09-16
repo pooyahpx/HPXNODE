@@ -34,9 +34,34 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin
       openvpn strongswan strongswan-swanctl \
       libcharon-extra-plugins libcharon-extauth-plugins \
       libstrongswan-standard-plugins libstrongswan-extra-plugins \
-      xl2tpd ppp \
+      xl2tpd ppp pptpd \
+      ocserv openssh-server \
       wireguard-tools iptables nftables iproute2 kmod openssl curl ca-certificates procps && \
     rm -rf /var/lib/apt/lists/* /usr/sbin/policy-rc.d
+
+# Optional runtime binaries: sing-box (anytls/tuic/naive sidecar) and mtg (MTProto).
+# Failures here must not fail the image build — only the required tool check below is hard.
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-amd64}"; \
+    case "$arch" in \
+      amd64) sb_arch=amd64; mtg_arch=amd64 ;; \
+      arm64) sb_arch=arm64; mtg_arch=arm64 ;; \
+      *) sb_arch=amd64; mtg_arch=amd64 ;; \
+    esac; \
+    SINGBOX_VER=1.11.15; \
+    curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/sing-box-${SINGBOX_VER}-linux-${sb_arch}.tar.gz" \
+      | tar -xz -C /tmp && \
+      install -m 0755 /tmp/sing-box-${SINGBOX_VER}-linux-${sb_arch}/sing-box /usr/local/bin/sing-box && \
+      rm -rf /tmp/sing-box-${SINGBOX_VER}-linux-${sb_arch} || \
+      echo "WARN: sing-box download skipped/failed (optional)"; \
+    MTG_VER=2.1.7; \
+    curl -fsSL -o /tmp/mtg.tar.gz \
+      "https://github.com/9seconds/mtg/releases/download/v${MTG_VER}/mtg-${MTG_VER}-linux-${mtg_arch}.tar.gz" && \
+      tar -xzf /tmp/mtg.tar.gz -C /tmp && \
+      install -m 0755 /tmp/mtg /usr/local/bin/mtg && \
+      rm -rf /tmp/mtg /tmp/mtg.tar.gz || \
+      echo "WARN: mtg download skipped/failed (optional)"
 
 # Fail the build if anything a backend shells out to at runtime is missing, so a
 # broken image can never ship again. Each of these has already bitten us:
@@ -44,6 +69,8 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin
 #           tunnel handshakes but gets no egress (openvpn/ikev2 use iptables and
 #           kept working, which made it look like a wireguard-only problem).
 #   plugins - EAP-MSCHAPv2 needs openssl for MD4/DES, else every IKEv2 auth fails.
+# Optional backends (pptpd, ocserv, sshd, sing-box, mtg, awg) are installed when
+# available above but are NOT required here.
 RUN set -eux; \
     for b in nft iptables wg openvpn swanctl ip xl2tpd pppd; do \
       command -v "$b" >/dev/null || { echo "MISSING binary: $b" >&2; exit 1; }; \
@@ -57,7 +84,9 @@ RUN set -eux; \
 ENV SERVICE_PROTOCOL=grpc \
     NODE_HOST=0.0.0.0 \
     XRAY_EXECUTABLE_PATH=/usr/local/bin/xray \
-    XRAY_ASSETS_PATH=/usr/local/share/xray
+    XRAY_ASSETS_PATH=/usr/local/share/xray \
+    SINGBOX_EXECUTABLE_PATH=/usr/local/bin/sing-box \
+    MTG_EXECUTABLE_PATH=/usr/local/bin/mtg
 
 WORKDIR /app
 COPY --from=builder /src/main /app/main

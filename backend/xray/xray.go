@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pooyahpx/HPXNODE/backend/singbox"
 	"github.com/pooyahpx/HPXNODE/backend/xray/api"
 	"github.com/pooyahpx/HPXNODE/common"
 	"github.com/pooyahpx/HPXNODE/config"
@@ -20,6 +21,9 @@ type Xray struct {
 	metricPort int
 	cancelFunc context.CancelFunc
 	mu         sync.RWMutex
+
+	// sing-box sidecar for anytls/tuic/naive inbounds stock xray-core lacks.
+	singbox *singbox.Sidecar
 
 	// Per-user device/IP-limit state (email-keyed). xray-core has no per-IP
 	// eviction, so enforcement disconnects an over-limit user (removes them from
@@ -94,6 +98,20 @@ func New(ctx context.Context, xrayConfig *Config, users []*common.User, apiPort,
 
 	xray.core = core
 
+	if len(xrayConfig.sidecarInbounds) > 0 {
+		for _, in := range xrayConfig.sidecarInbounds {
+			in.Users = users
+		}
+		sbDir := filepath.Join(configAbsolutePath, "singbox")
+		sb, sbErr := singbox.New(sbDir, xrayConfig.sidecarInbounds, cfg.LogBufferSize)
+		if sbErr != nil {
+			log.Printf("sing-box sidecar unavailable for anytls/tuic/naive: %v", sbErr)
+		} else {
+			xray.singbox = sb
+			log.Printf("sing-box sidecar started for %d inbound(s)", len(xrayConfig.sidecarInbounds))
+		}
+	}
+
 	handler, err := api.NewXrayAPI(apiPort)
 	if err != nil {
 		xray.Shutdown()
@@ -140,6 +158,11 @@ func (x *Xray) Restart() error {
 	if err := x.core.Restart(x.config, x.cfg.Debug); err != nil {
 		return err
 	}
+	if x.singbox != nil {
+		if err := x.singbox.Restart(); err != nil {
+			log.Printf("sing-box sidecar restart: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -153,6 +176,11 @@ func (x *Xray) Shutdown() {
 	// Stop core (this now waits for process termination)
 	if x.core != nil {
 		x.core.Stop()
+	}
+
+	if x.singbox != nil {
+		x.singbox.Shutdown()
+		x.singbox = nil
 	}
 
 	// Close API handler

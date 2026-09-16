@@ -38,6 +38,24 @@ func TestBackendInstanceID(t *testing.T) {
 			want:   "wg0",
 		},
 		{
+			name:   "pptp is keyed by inbound tag",
+			typ:    common.BackendType_PPTP,
+			config: `{"inbound_tag":"pptp-main","pool":"10.32.0.0/24"}`,
+			want:   "pptp-main",
+		},
+		{
+			name:   "wg_c is keyed by interface name",
+			typ:    common.BackendType_WG_C,
+			config: `{"interface_name":"wgc0","listen_port":51821}`,
+			want:   "wgc0",
+		},
+		{
+			name:   "ssh is keyed by inbound tag",
+			typ:    common.BackendType_SSH,
+			config: `{"inbound_tag":"ssh-tun","port":2222}`,
+			want:   "ssh-tun",
+		},
+		{
 			name:   "xray stays unkeyed so a new core replaces the old one",
 			typ:    common.BackendType_XRAY,
 			config: `{"inbounds":[{"tag":"vless-in"}]}`,
