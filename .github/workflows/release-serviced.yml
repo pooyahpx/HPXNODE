@@ -1,0 +1,72 @@
+name: Release serviced binaries
+
+# Builds hpx-node-serviced for linux/amd64 + arm64 and attaches to the GitHub Release.
+on:
+  release:
+    types: [created]
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-serviced:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+          - goarch: arm64
+    env:
+      GOOS: linux
+      GOARCH: ${{ matrix.goarch }}
+      CGO_ENABLED: 0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -eux
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${{ github.event.release.tag_name }}"
+          fi
+          VER="${TAG#v}"
+          ASSET="hpx-node-serviced_${TAG}_linux_${GOARCH}.tar.gz"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "asset=${ASSET}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          set -eux
+          VERSION="${{ steps.ver.outputs.version }}"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -X github.com/pooyahpx/HPXNODE/version.Version=${VERSION}" \
+            -o hpx-node-serviced ./cmd/serviced
+          tar -czf "${{ steps.ver.outputs.asset }}" hpx-node-serviced
+
+      - name: Upload release asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          TAG="${{ steps.ver.outputs.tag }}"
+          ASSET="${{ steps.ver.outputs.asset }}"
+          # Wait briefly if release was just created by tag push.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 3
+          done
+          gh release upload "$TAG" "$ASSET" --repo "${{ github.repository }}" --clobber

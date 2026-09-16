@@ -1,8 +1,14 @@
 NAME = HPXPANEL-node-$(GOOS)-$(GOARCH)
+SERVICED_NAME = hpx-node-serviced
 
-LDFLAGS = -s -w -buildid=
+# Prefer git tag (e.g. v0.6.0 → 0.6.0); fall back to version.Version in source.
+GIT_VERSION := $(shell git describe --tags --always 2>/dev/null | sed 's/^v//')
+VERSION ?= $(if $(GIT_VERSION),$(GIT_VERSION),0.6.0)
+VERSION_PKG = github.com/pooyahpx/HPXNODE/version
+LDFLAGS = -s -w -buildid= -X $(VERSION_PKG).Version=$(VERSION)
 PARAMS = -trimpath -ldflags "$(LDFLAGS)" -v
 MAIN = ./cmd/node
+SERVICED_MAIN = ./cmd/serviced
 PREFIX ?= $(shell go env GOPATH)
 XRAY_OS ?=
 XRAY_ARCH ?=
@@ -38,15 +44,18 @@ ifeq ($(shell echo "$(GOARCH)" | grep -Eq "(mips|mipsle)" && echo true),true)
 ADDITION = GOMIPS=softfloat go build -o $(NAME)_softfloat -trimpath -ldflags "$(LDFLAGS)" -v $(MAIN)
 endif
 
-.PHONY: clean build test test-race-wireguard test-integration test-integration-full test-integration-wireguard
+.PHONY: clean build build-serviced test test-race-wireguard test-integration test-integration-full test-integration-wireguard
 
 build:
 	CGO_ENABLED=0 go build -o $(OUTPUT) $(PARAMS) $(MAIN)
 	$(ADDITION)
 
+build-serviced:
+	CGO_ENABLED=0 go build -o $(SERVICED_NAME) $(PARAMS) $(SERVICED_MAIN)
+
 clean:
 	go clean -v -i $(PWD)
-	rm -f $(NAME)-* w$(NAME)-*.exe
+	rm -f $(NAME)-* w$(NAME)-*.exe $(SERVICED_NAME) $(SERVICED_NAME).exe
 
 deps:
 	go mod download

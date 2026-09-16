@@ -1,0 +1,47 @@
+# GoReleaser for hpx-node-serviced host management API binaries.
+# Attached to GitHub Releases so install.sh can download without requiring Go on the host.
+version: 2
+
+project_name: hpx-node-serviced
+
+builds:
+  - id: hpx-node-serviced
+    main: ./cmd/serviced
+    binary: hpx-node-serviced
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/pooyahpx/HPXNODE/version.Version={{.Version}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      hpx-node-serviced_{{ .Version }}_linux_{{ .Arch }}
+    ids:
+      - hpx-node-serviced
+    files:
+      - LICENSE*
+
+checksum:
+  name_template: 'hpx-node-serviced_checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+release:
+  github:
+    owner: pooyahpx
+    name: HPXNODE
+  draft: false
+  prerelease: auto
+  mode: keep-existing

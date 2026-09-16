@@ -32,9 +32,11 @@ import (
 	"github.com/pooyahpx/HPXNODE/config"
 	"github.com/pooyahpx/HPXNODE/pkg/netutil"
 	"github.com/pooyahpx/HPXNODE/pkg/sysstats"
+	"github.com/pooyahpx/HPXNODE/version"
 )
 
-const NodeVersion = "0.5.2"
+// NodeVersion is the reported node version (from version.Version / ldflags).
+var NodeVersion = version.Version
 
 type Service interface {
 	Disconnect()
