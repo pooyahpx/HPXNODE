@@ -47,13 +47,53 @@ sudo hpx-node --name shop1 status
 Paths: `/opt/hpx-node-shop1`, `/var/lib/hpx-node-shop1`, …  
 Also give each panel node **different VPN/inbound ports** (host networking — ports cannot collide).
 
-After install, register the node in **HPXPANEL → Nodes** with the printed **Address**, **Node Port**, **API key**, and **Server CA**.
+After install, register the node in **HPXPANEL → Nodes** with the printed **Address**, **Node Port**, **API Port**, **API key**, and **Server CA**.
 
 | Path | Purpose |
 | --- | --- |
 | `/opt/hpx-node` or `/opt/hpx-node-<name>` | Compose + installer |
 | `/var/lib/hpx-node` or `/var/lib/hpx-node-<name>` | Certs + generated configs |
 | `hpx-node list` / `status` / `logs` / `update` | Manage instances |
+
+## Ports (important for the panel)
+
+| Panel field | Default | What listens |
+| --- | --- | --- |
+| **Node Port** | `62050` | Node process (gRPC / CONNECTED status) |
+| **API Port** | `62051` (Node Port + 1) | Management HTTPS — **Update Node**, core/geofile updates |
+
+Both ports must be open in the firewall toward the panel. **CONNECTED** only proves Node Port works; **Update Node** needs API Port.
+
+From **v0.6.2**, the management API runs **inside the node container** on `PANEL_API_PORT` (compose mounts `docker.sock`). Older installs (≤ 0.5.2 / early 0.6.0) do not have a reachable update API until you upgrade once on the host.
+
+## Update Node (from host)
+
+Upgrade image + refresh compose (adds docker.sock / in-container API):
+
+```bash
+sudo bash -c "$(curl -fsSL https://github.com/pooyahpx/HPXNODE/raw/v0.6.2/scripts/install.sh)" @ update -y
+```
+
+If the CLI is already installed:
+
+```bash
+sudo hpx-node update -y
+# multi-instance:
+sudo hpx-node --name shop1 update -y
+```
+
+Then open **API Port** in the firewall and **Reconnect** the node in HPXPANEL. `NODE VERSION` should become **0.6.2+**. After that, **Nodes → Update Node** in the panel works with one click (no SSH).
+
+### Upgrading from 0.5.2
+
+Panel **Update Node** cannot reach a 0.5.2 host by itself (no management API on API Port). You must run the host `update -y` command above **once** on each node, **or** configure panel SSH env (see HPXPANEL README) so the panel can run that command for you.
+
+### “Node service is not reachable” / API Port errors
+
+1. On the node: `sudo hpx-node update -y` (or the curl one-liner above) → get **≥ 0.6.2**
+2. Firewall: allow **API Port** (and Node Port) from the panel
+3. In the panel node form: **API Port** must match the host (`PANEL_API_PORT` / install prompt), not the Node Port
+4. Reconnect the node, then try **Update Node** again
 
 ## Features
 
