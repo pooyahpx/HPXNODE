@@ -12,6 +12,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make NAME=main build
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make build-serviced
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} make install_xray
 
 # Runtime is Debian (not Alpine) so the multi-backend fork's VPN deps —
@@ -90,9 +91,30 @@ ENV SERVICE_PROTOCOL=grpc \
 
 WORKDIR /app
 COPY --from=builder /src/main /app/main
+COPY --from=builder /src/hpx-node-serviced /usr/local/bin/hpx-node-serviced
 COPY --from=builder /usr/local/bin/xray /usr/local/bin/xray
 COPY --from=builder /usr/local/share/xray /usr/local/share/xray
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY docker/hpx-node-cli.sh /usr/local/bin/hpx-node
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/hpx-node /usr/local/bin/hpx-node-serviced
+
+# Docker CLI so in-container serviced can `docker compose pull/up` via mounted docker.sock.
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-amd64}"; \
+    case "$arch" in \
+      amd64) darch=x86_64 ;; \
+      arm64) darch=aarch64 ;; \
+      *) darch=x86_64 ;; \
+    esac; \
+    ver=27.5.1; \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${darch}/docker-${ver}.tgz" \
+      | tar -xz -C /tmp && \
+      install -m 0755 /tmp/docker/docker /usr/local/bin/docker && \
+      rm -rf /tmp/docker; \
+    mkdir -p /usr/local/lib/docker/cli-plugins; \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-${arch}" \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+      chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

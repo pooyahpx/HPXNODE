@@ -3,6 +3,8 @@
 # HPX Node (multi-backend) container entrypoint.
 # Turnkey: generates the node's TLS certificate on first run, prepares the host
 # for VPN traffic, prints the Server CA to paste into the panel, then runs the node.
+# Also starts in-container hpx-node-serviced on PANEL_API_PORT when docker.sock is mounted
+# so Panel "Update Node" works without a separate host systemd unit.
 #
 set -e
 
@@ -29,7 +31,6 @@ if [ ! -s "$SSL_CERT_FILE" ]; then
 fi
 
 # Best-effort host prep (needs cap NET_ADMIN + SYS_MODULE and network_mode: host).
-# The node also installs its own per-backend NAT; this just ensures the basics.
 modprobe wireguard 2>/dev/null || true
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 
@@ -38,5 +39,35 @@ echo "Paste the block below into the node's \"Server CA\" field in the panel:"
 echo
 cat "$SSL_CERT_FILE"
 echo "==============================================================="
+
+start_incontainer_serviced() {
+  local api_port="${PANEL_API_PORT:-}"
+  if [ -z "$api_port" ]; then
+    echo "[hpx-node] PANEL_API_PORT unset — skipping in-container management API"
+    return 0
+  fi
+  if [ ! -S /var/run/docker.sock ]; then
+    echo "[hpx-node] /var/run/docker.sock missing — Panel Update Node needs docker.sock mount"
+    return 0
+  fi
+  if [ ! -x /usr/local/bin/hpx-node-serviced ]; then
+    echo "[hpx-node] hpx-node-serviced binary missing in image"
+    return 0
+  fi
+
+  export API_PORT="$api_port"
+  export APP_NAME="${APP_NAME:-hpx-node}"
+  cat > /tmp/hpx-serviced.env <<EOF
+API_KEY=${API_KEY}
+API_PORT=${API_PORT}
+SSL_CERT_FILE=${SSL_CERT_FILE}
+SSL_KEY_FILE=${SSL_KEY_FILE}
+APP_NAME=${APP_NAME}
+EOF
+  ENV_FILE=/tmp/hpx-serviced.env /usr/local/bin/hpx-node-serviced >>/tmp/hpx-serviced.log 2>&1 &
+  echo "[hpx-node] management API (Update Node) listening on :${API_PORT}"
+}
+
+start_incontainer_serviced
 
 exec /app/main

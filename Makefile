@@ -3,7 +3,7 @@ SERVICED_NAME = hpx-node-serviced
 
 # Prefer git tag (e.g. v0.6.0 → 0.6.0); fall back to version.Version in source.
 GIT_VERSION := $(shell git describe --tags --always 2>/dev/null | sed 's/^v//')
-VERSION ?= $(if $(GIT_VERSION),$(GIT_VERSION),0.6.0)
+VERSION ?= $(if $(GIT_VERSION),$(GIT_VERSION),0.6.2)
 VERSION_PKG = github.com/pooyahpx/HPXNODE/version
 LDFLAGS = -s -w -buildid= -X $(VERSION_PKG).Version=$(VERSION)
 PARAMS = -trimpath -ldflags "$(LDFLAGS)" -v

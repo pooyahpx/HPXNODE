@@ -25,7 +25,9 @@ jobs:
           alias="ghcr.io/${owner}/hpx-node"
           tags="${image}:latest,${image}:${GITHUB_SHA::7},${alias}:latest,${alias}:${GITHUB_SHA::7}"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            tags="${tags},${image}:${GITHUB_REF_NAME},${alias}:${GITHUB_REF_NAME}"
+            raw="${GITHUB_REF_NAME}"
+            ver="${raw#v}"
+            tags="${tags},${image}:${raw},${image}:${ver},${alias}:${raw},${alias}:${ver}"
           fi
           echo "image=${image}" >> "$GITHUB_OUTPUT"
           echo "tags=${tags}"   >> "$GITHUB_OUTPUT"
