@@ -1366,6 +1366,8 @@ type Openvpn struct {
 	Serial string `protobuf:"bytes,1,opt,name=serial,proto3" json:"serial,omitempty"`
 	// Hex-encoded SHA-256 fingerprint of the client certificate (DER).
 	Fingerprint   string `protobuf:"bytes,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	Username      string `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	Password      string `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1410,6 +1412,20 @@ func (x *Openvpn) GetSerial() string {
 func (x *Openvpn) GetFingerprint() string {
 	if x != nil {
 		return x.Fingerprint
+	}
+	return ""
+}
+
+func (x *Openvpn) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *Openvpn) GetPassword() string {
+	if x != nil {
+		return x.Password
 	}
 	return ""
 }
@@ -2227,10 +2243,12 @@ const file_common_service_proto_rawDesc = "" +
 	"public_key\x18\x01 \x01(\tR\tpublicKey\x12\x19\n" +
 	"\bpeer_ips\x18\x02 \x03(\tR\apeerIps\"\x1e\n" +
 	"\bHysteria\x12\x12\n" +
-	"\x04auth\x18\x01 \x01(\tR\x04auth\"C\n" +
+	"\x04auth\x18\x01 \x01(\tR\x04auth\"{\n" +
 	"\aOpenvpn\x12\x16\n" +
 	"\x06serial\x18\x01 \x01(\tR\x06serial\x12 \n" +
-	"\vfingerprint\x18\x02 \x01(\tR\vfingerprint\"?\n" +
+	"\vfingerprint\x18\x02 \x01(\tR\vfingerprint\x12\x1a\n" +
+	"\busername\x18\x03 \x01(\tR\busername\x12\x1a\n" +
+	"\bpassword\x18\x04 \x01(\tR\bpassword\"?\n" +
 	"\x05Ikev2\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"D\n" +

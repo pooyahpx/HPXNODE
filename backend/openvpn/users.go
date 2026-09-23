@@ -1,6 +1,7 @@
 package openvpn
 
 import (
+	"math/big"
 	"slices"
 	"sync"
 
@@ -11,6 +12,8 @@ import (
 type userEntry struct {
 	serial      string
 	fingerprint string
+	username    string
+	password    string
 	ipLimit     uint32 // max simultaneous sessions; 0 = unlimited
 	speedLimit  uint32 // per-direction throughput cap kbit/s; 0 = unlimited
 }
@@ -46,16 +49,41 @@ func newUserStore(inboundTag string) *userStore {
 func (s *userStore) authorize(commonName, serial string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.authorizedLocked(commonName, serial)
+	return s.authorizedLocked(commonName, serial, "", "")
 }
 
-func (s *userStore) authorizedLocked(commonName, serial string) bool {
+func serialEqual(pinned, presented string) bool {
+	if pinned == "" {
+		return true
+	}
+	if pinned == presented {
+		return true
+	}
+	// Panel historically stored hex; OpenVPN presents decimal tls_serial_0.
+	pd, ok1 := new(big.Int).SetString(pinned, 10)
+	pr, ok2 := new(big.Int).SetString(presented, 10)
+	if ok1 && ok2 && pd.Cmp(pr) == 0 {
+		return true
+	}
+	ph, ok3 := new(big.Int).SetString(pinned, 16)
+	if ok3 && ok2 && ph.Cmp(pr) == 0 {
+		return true
+	}
+	return false
+}
+
+func (s *userStore) authorizedLocked(commonName, serial, username, password string) bool {
 	entry, ok := s.users[commonName]
 	if !ok {
 		return false
 	}
-	if entry.serial != "" && entry.serial != serial {
+	if !serialEqual(entry.serial, serial) {
 		return false
+	}
+	if entry.password != "" {
+		if username != entry.username || password != entry.password {
+			return false
+		}
 	}
 	return true
 }
@@ -63,10 +91,10 @@ func (s *userStore) authorizedLocked(commonName, serial string) bool {
 // tryConnect authorizes a connecting session and enforces the per-user device
 // limit. It returns allowed=false with a reason for an over-limit or unknown
 // user. A session id already counted (REAUTH of the same client) is idempotent.
-func (s *userStore) tryConnect(commonName, serial, clientID string) (bool, string) {
+func (s *userStore) tryConnect(commonName, serial, clientID, username, password string) (bool, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.authorizedLocked(commonName, serial) {
+	if !s.authorizedLocked(commonName, serial, username, password) {
 		return false, "unauthorized"
 	}
 	set := s.sessions[commonName]
@@ -156,7 +184,14 @@ func (s *userStore) applyUser(u *common.User) (cn string, changedSerial bool, re
 	}
 
 	ov := u.GetProxies().GetOpenvpn()
-	entry := userEntry{serial: ov.GetSerial(), fingerprint: ov.GetFingerprint(), ipLimit: u.GetIpLimit(), speedLimit: u.GetSpeedLimit()}
+	entry := userEntry{
+		serial:      ov.GetSerial(),
+		fingerprint: ov.GetFingerprint(),
+		username:    ov.GetUsername(),
+		password:    ov.GetPassword(),
+		ipLimit:     u.GetIpLimit(),
+		speedLimit:  u.GetSpeedLimit(),
+	}
 
 	s.mu.Lock()
 	prev, existed := s.users[cn]

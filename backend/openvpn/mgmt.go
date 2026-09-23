@@ -24,7 +24,7 @@ type clientStatus struct {
 // tracks live sessions so the per-user device limit can be enforced.
 type authDecider interface {
 	authorize(commonName, serial string) bool
-	tryConnect(commonName, serial, clientID string) (bool, string)
+	tryConnect(commonName, serial, clientID, username, password string) (bool, string)
 	releaseSession(commonName, clientID string)
 }
 
@@ -173,11 +173,13 @@ func (m *mgmtClient) finishConnect() {
 
 	cn := env["common_name"]
 	serial := env["tls_serial_0"]
+	username := env["username"]
+	password := env["password"]
 	if m.decider == nil {
 		m.send(fmt.Sprintf("client-deny %s %s \"unauthorized\"", cid, kid))
 		return
 	}
-	if allowed, reason := m.decider.tryConnect(cn, serial, cid); allowed {
+	if allowed, reason := m.decider.tryConnect(cn, serial, cid, username, password); allowed {
 		m.send(fmt.Sprintf("client-auth-nt %s %s", cid, kid))
 		m.logf("openvpn: authorized cn=%s", cn)
 	} else {

@@ -162,6 +162,8 @@ message Openvpn {
     string serial = 1;
     // Hex-encoded SHA-256 fingerprint of the client certificate (DER).
     string fingerprint = 2;
+    string username = 3;
+    string password = 4;
 }
 
 message Ikev2 {

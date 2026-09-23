@@ -64,17 +64,17 @@ func TestDeviceLimitDenyAndRetroactive(t *testing.T) {
 	s.replaceAll([]*common.User{u})
 
 	// First device connects; second is denied (deny-new).
-	if ok, _ := s.tryConnect("42", "1", "cidA"); !ok {
+	if ok, _ := s.tryConnect("42", "1", "cidA", "", ""); !ok {
 		t.Fatal("first session should be allowed")
 	}
-	if ok, reason := s.tryConnect("42", "1", "cidB"); ok || reason != "device limit reached" {
+	if ok, reason := s.tryConnect("42", "1", "cidB", "", ""); ok || reason != "device limit reached" {
 		t.Fatalf("second session should be denied, got ok=%v reason=%q", ok, reason)
 	}
 
 	// Raise the limit to 2; the second device can now connect.
 	u.IpLimit = 2
 	s.applyUser(u)
-	if ok, _ := s.tryConnect("42", "1", "cidB"); !ok {
+	if ok, _ := s.tryConnect("42", "1", "cidB", "", ""); !ok {
 		t.Fatal("second session should be allowed at limit 2")
 	}
 
@@ -135,23 +135,23 @@ func TestDeviceLimitEnforced(t *testing.T) {
 	u.IpLimit = 2
 	s.replaceAll([]*common.User{u})
 
-	if ok, _ := s.tryConnect("42", "1", "c1"); !ok {
+	if ok, _ := s.tryConnect("42", "1", "c1", "", ""); !ok {
 		t.Fatal("c1 should connect")
 	}
-	if ok, _ := s.tryConnect("42", "1", "c2"); !ok {
+	if ok, _ := s.tryConnect("42", "1", "c2", "", ""); !ok {
 		t.Fatal("c2 should connect")
 	}
 	// third session exceeds the limit -> denied
-	if ok, reason := s.tryConnect("42", "1", "c3"); ok || reason == "" {
+	if ok, reason := s.tryConnect("42", "1", "c3", "", ""); ok || reason == "" {
 		t.Errorf("c3 should be denied by limit, got ok=%v reason=%q", ok, reason)
 	}
 	// REAUTH of an already-counted session is idempotent
-	if ok, _ := s.tryConnect("42", "1", "c1"); !ok {
+	if ok, _ := s.tryConnect("42", "1", "c1", "", ""); !ok {
 		t.Error("c1 reauth should stay allowed")
 	}
 	// after a disconnect a new session fits again
 	s.releaseSession("42", "c2")
-	if ok, _ := s.tryConnect("42", "1", "c4"); !ok {
+	if ok, _ := s.tryConnect("42", "1", "c4", "", ""); !ok {
 		t.Error("c4 should connect after c2 released")
 	}
 }
@@ -160,7 +160,7 @@ func TestDeviceLimitZeroIsUnlimited(t *testing.T) {
 	s := newUserStore("ovpn")
 	s.replaceAll([]*common.User{openvpnUser("7", "1", "ovpn")}) // ip_limit defaults to 0
 	for i := 0; i < 10; i++ {
-		if ok, _ := s.tryConnect("7", "1", string(rune('a'+i))); !ok {
+		if ok, _ := s.tryConnect("7", "1", string(rune('a'+i)), "", ""); !ok {
 			t.Fatalf("session %d should connect (unlimited)", i)
 		}
 	}
