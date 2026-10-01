@@ -138,9 +138,9 @@ ifeq ($(UNAME_S),Linux)
 	if [ "$(DISTRO)" = "debian" ] || [ "$(DISTRO)" = "ubuntu" ] || \
 	   [ "$(DISTRO)" = "centos" ] || [ "$(DISTRO)" = "rhel" ] || [ "$(DISTRO)" = "fedora" ] || \
 	   [ "$(DISTRO)" = "arch" ]; then \
-		bash "$(CURDIR)/scripts/install_xray_core.sh" $(XRAY_INSTALL_ARGS); \
+		sudo bash "$(CURDIR)/scripts/install_xray_core.sh" $(XRAY_INSTALL_ARGS); \
 	else \
-		bash "$(CURDIR)/scripts/install_xray_core.sh" $(XRAY_INSTALL_ARGS); \
+		sudo bash "$(CURDIR)/scripts/install_xray_core.sh" $(XRAY_INSTALL_ARGS); \
 	fi
 
 else
