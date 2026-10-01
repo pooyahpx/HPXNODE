@@ -549,6 +549,11 @@ write_compose() {
     echo "      HPX_SERVICE_NAME: \"${SERVICE}\""
     echo "      HPX_COMPOSE_FILE: \"${COMPOSE_FILE}\""
     echo "      APP_NAME: \"hpx-node\""
+    # Pin the panel Address into the cert SAN (important on multi-IP hosts).
+    _pub_ip="$(curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null \
+      || curl -fsS4 --max-time 5 https://ifconfig.io 2>/dev/null \
+      || ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)"
+    [ -n "$_pub_ip" ] && echo "      NODE_PUBLIC_IP: \"${_pub_ip}\""
     [ "$XRAY_ON"  -eq 0 ] && echo "      HPX_NODE_DISABLE_XRAY: \"1\""
     [ "$OVPN_ON"  -eq 0 ] && echo "      HPX_NODE_DISABLE_OPENVPN: \"1\""
     [ "$WG_ON"    -eq 0 ] && echo "      HPX_NODE_DISABLE_WIREGUARD: \"1\""
@@ -912,6 +917,44 @@ need_compose() {
 restart_command()  { require_root; need_compose || return 0; dc restart; log "restarted $SERVICE"; }
 status_command()   { need_compose || return 0; dc ps; }
 logs_command()     { need_compose || return 0; dc logs -f; }
+
+# Fix SSL IP mismatch after changing default route / dual-IP hosts.
+# Deletes certs, pins NODE_PUBLIC_IP, restarts so entrypoint regenerates SAN.
+regenerate_cert_command() {
+  require_root
+  need_compose || return 1
+  local cert="$DATA_DIR/certs/ssl_cert.pem" key="$DATA_DIR/certs/ssl_key.pem"
+  echo -e "  ${c_cyn}>${c_off} Regenerating TLS cert (multi-IP / Address mismatch)..."
+  rm -f "$cert" "$key"
+  local pub
+  pub="$(curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null \
+    || curl -fsS4 --max-time 5 https://ifconfig.io 2>/dev/null \
+    || ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)"
+  if [ -n "$pub" ] && [ -f "$COMPOSE_FILE" ]; then
+    if grep -q 'NODE_PUBLIC_IP:' "$COMPOSE_FILE" 2>/dev/null; then
+      sed -i "s|NODE_PUBLIC_IP:.*|NODE_PUBLIC_IP: \"${pub}\"|" "$COMPOSE_FILE"
+    else
+      sed -i "/APP_NAME:/a\\      NODE_PUBLIC_IP: \"${pub}\"" "$COMPOSE_FILE"
+    fi
+  fi
+  dc up -d --force-recreate
+  local i
+  for i in $(seq 1 20); do
+    [ -s "$cert" ] && break
+    sleep 1
+  done
+  echo
+  if [ -s "$cert" ]; then
+    echo -e "  ${c_grn}New Server CA${c_off} — paste into HPXPANEL → Nodes → Server CA (Address=${pub:-?}):"
+    echo
+    cat "$cert"
+    echo
+    openssl x509 -in "$cert" -noout -subject -ext subjectAltName 2>/dev/null || true
+  else
+    warn "Cert not ready — try: cat $cert"
+  fi
+}
+
 uninstall_command() {
   require_root; apply_instance
   detect_compose || true
@@ -958,7 +1001,7 @@ main() {
   local cmd="menu"
   case "${1:-}" in
     menu) cmd="menu"; shift ;;
-    install|update|uninstall|restart|status|logs|list) cmd="$1"; shift ;;
+    install|update|uninstall|restart|status|logs|list|regenerate-cert) cmd="$1"; shift ;;
     -h|--help) usage; exit 0 ;;
     "") cmd="install" ;;
     -*) cmd="install" ;;
@@ -974,6 +1017,7 @@ main() {
     restart)   parse_install_args "$@"; restart_command ;;
     status)    parse_install_args "$@"; status_command ;;
     logs)      parse_install_args "$@"; logs_command ;;
+    regenerate-cert) parse_install_args "$@"; regenerate_cert_command ;;
   esac
 }
 
