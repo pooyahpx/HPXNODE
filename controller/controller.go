@@ -460,7 +460,8 @@ func (c *Controller) keepAliveTracker(ctx context.Context, keepAlive time.Durati
 }
 
 func (c *Controller) recordSystemStats(ctx context.Context) {
-	interval := 1500 * time.Millisecond
+	// Was 1.5s + blocking 2s samples → idle nodes looked pegged on CPU.
+	interval := 10 * time.Second
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

@@ -81,7 +81,7 @@ func (x *Xray) checkXrayStatus(baseCtx context.Context) error {
 func (x *Xray) checkXrayHealth(baseCtx context.Context) {
 	consecutiveFailures := 0
 	maxFailures := 10 // Give Xray API time to recover under load before restarting.
-	checkInterval := 2 * time.Second
+	checkInterval := 15 * time.Second
 
 	restart := func(reason string) {
 		log.Println(reason)
