@@ -1,9 +1,13 @@
 NAME = HPXPANEL-node-$(GOOS)-$(GOARCH)
 SERVICED_NAME = hpx-node-serviced
 
-# Prefer git tag (e.g. v0.6.0 → 0.6.0); fall back to version.Version in source.
-GIT_VERSION := $(shell git describe --tags --always 2>/dev/null | sed 's/^v//')
-VERSION ?= $(if $(GIT_VERSION),$(GIT_VERSION),0.6.2)
+# Prefer git tag (e.g. v0.6.4 → 0.6.4); fall back to version.Version in source.
+GIT_VERSION := $(shell git describe --tags --exact-match 2>/dev/null | sed 's/^v//' ; true)
+ifeq ($(GIT_VERSION),)
+GIT_VERSION := $(shell git describe --tags --always 2>/dev/null | sed 's/^v//' | sed 's/-[0-9]*-g[0-9a-f]*$$//' ; true)
+endif
+SRC_VERSION := $(shell sed -n 's/^var Version = "\(.*\)"/\1/p' version/version.go 2>/dev/null)
+VERSION ?= $(if $(GIT_VERSION),$(GIT_VERSION),$(if $(SRC_VERSION),$(SRC_VERSION),0.0.0))
 VERSION_PKG = github.com/pooyahpx/HPXNODE/version
 LDFLAGS = -s -w -buildid= -X $(VERSION_PKG).Version=$(VERSION)
 PARAMS = -trimpath -ldflags "$(LDFLAGS)" -v

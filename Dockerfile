@@ -11,8 +11,14 @@ COPY go* .
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make NAME=main build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make build-serviced
+# Bake the release version into the binary (CI passes VERSION=0.6.5 etc.).
+# Without this, shallow clones fall back incorrectly and the panel shows a stale NODE VERSION.
+ARG VERSION=
+RUN VERSION_ARG="${VERSION}" ; \
+    if [ -z "$VERSION_ARG" ]; then VERSION_ARG="$(sed -n 's/^var Version = \"\(.*\)\"/\1/p' version/version.go)"; fi ; \
+    echo "Building HPXNODE VERSION=${VERSION_ARG}" ; \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make NAME=main VERSION="${VERSION_ARG}" build ; \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make VERSION="${VERSION_ARG}" build-serviced
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} make install_xray
 
 # Runtime is Debian (not Alpine) so the multi-backend fork's VPN deps —
